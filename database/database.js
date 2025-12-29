@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 export const connectDB = () => {
     mongoose.connect(process.env.MONGO_URL, {
-        dbName: "QUAN_LY_THU_sVIEN",  
+        dbName: "QUAN_LY_THU_VIEN",  
     })
     .then(() => {
         console.log(`KET NOT DATABASE THANH CONG`);
