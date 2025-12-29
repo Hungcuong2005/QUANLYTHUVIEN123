@@ -5,6 +5,7 @@ import cors from "cors";
 import { connectDB } from "./database/database.js";
 import { errorMiddleware } from "./middlewares/errorMiddlewares.js";
 import authRouter from "./routes/auth.route.js";
+import bookRouter from "./routes/book.route.js";
 
 
 export const app = express();
@@ -28,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 
 
 app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/book", bookRouter);
 
 connectDB();
 
