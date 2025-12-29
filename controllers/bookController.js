@@ -1,6 +1,6 @@
 import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
-import { Book } from "../models/bookModel.js";
-import { User } from "../models/userModel.js";
+import { Book } from "../models/book.model.js";
+import { User } from "../models/user.model.js";
 import ErrorHandler from "../middlewares/errorMiddlewares.js";
 
 
