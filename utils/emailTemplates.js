@@ -1,82 +1,127 @@
-export function generateVerificationOtpEmailTemplate(otpCode){
-    return `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #000; color: #fff;">
-        <h2 style="color: #fff; text-align: center;">
-            Verify Your Email Address
-        </h2>
+export function generateVerificationOtpEmailTemplate(otpCode) {
+  return `
+    <div style="
+      font-family: 'Roboto', Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 24px;
+      border-radius: 10px;
+      background-color: #8B0000;
+      color: #ffffff;
+      border: 1px solid #b22222;
+    ">
+      <h2 style="color: #FFDADA; text-align: center; letter-spacing: 0.5px;">
+        XÁC THỰC ĐỊA CHỈ EMAIL
+      </h2>
 
-        <p style="font-size: 16px; color: #ccc;">
-            Dear User,
+      <p style="font-size: 16px; color: #FFECEC;">
+        Xin chào,
+      </p>
+
+      <p style="font-size: 16px; color: #FFECEC;">
+        Để hoàn tất quá trình đăng ký hoặc đăng nhập, vui lòng sử dụng mã xác thực bên dưới:
+      </p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <span style="
+          display: inline-block;
+          font-size: 26px;
+          font-weight: bold;
+          color: #8B0000;
+          padding: 12px 28px;
+          border-radius: 6px;
+          background-color: #ffffff;
+          letter-spacing: 4px;
+        ">
+          ${otpCode}
+        </span>
+      </div>
+
+      <p style="font-size: 15px; color: #FFDADA;">
+        Mã xác thực có hiệu lực trong vòng <b>15 phút</b>. Vui lòng không chia sẻ mã này với bất kỳ ai.
+      </p>
+
+      <p style="font-size: 15px; color: #FFDADA;">
+        Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email.
+      </p>
+
+      <footer style="margin-top: 24px; text-align: center; font-size: 14px; color: #FFCACA;">
+        <p>
+          Trân trọng,<br />
+          <b>Đại học Bách Khoa</b>
         </p>
-
-        <p style="font-size: 16px; color: #ccc;">
-            To complete your registration or login, please use the following verification code:
+        <p style="font-size: 12px; color: #FFBABA;">
+          Đây là email tự động, vui lòng không trả lời.
         </p>
-
-        <div style="text-align: center; margin: 20px 0;">
-            <span style="display: inline-block; font-size: 24px; font-weight: bold; color: #000; padding: 10px 20px; border: 1px solid #fff; border-radius: 5px; background-color: #fff;">
-                ${otpCode}
-            </span>
-        </div>
-
-        <p style="font-size: 16px; color: #ccc;">
-            This code is valid for 15 minutes. Please do not share this code with anyone.
-        </p>
-
-        <p style="font-size: 16px; color: #ccc;">
-            If you did not request this email, please ignore it.
-        </p>
-
-        <footer style="margin-top: 20px; text-align: center; font-size: 14px; color: #666;">
-            <p>Thank you,<br>BookWorm Team</p>
-            <p style="font-size: 12px; color: #444;">
-                This is an automated message. Please do not reply to this email.
-            </p>
-        </footer>
+      </footer>
     </div>
-`
+  `;
 }
 
-export function generateForgotPasswordEmailTemplate(resetPasswordUrl){
-    return `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #000; color: #fff;">
-        <h2 style="color: #fff; text-align: center;">
-            Reset Your Password
-        </h2>
+export function generateForgotPasswordEmailTemplate(resetPasswordUrl) {
+  return `
+    <div style="
+      font-family: 'Roboto', Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 24px;
+      border-radius: 10px;
+      background-color: #8B0000;
+      color: #ffffff;
+      border: 1px solid #b22222;
+    ">
+      <h2 style="color: #FFDADA; text-align: center; letter-spacing: 0.5px;">
+        ĐẶT LẠI MẬT KHẨU
+      </h2>
 
-        <p style="font-size: 16px; color: #ccc;">
-            Dear User,
+      <p style="font-size: 16px; color: #FFECEC;">
+        Xin chào,
+      </p>
+
+      <p style="font-size: 16px; color: #FFECEC;">
+        Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản của mình. Nhấn nút bên dưới để tiếp tục:
+      </p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a
+          href="${resetPasswordUrl}"
+          style="
+            display: inline-block;
+            font-size: 16px;
+            font-weight: bold;
+            color: #8B0000;
+            text-decoration: none;
+            padding: 14px 28px;
+            border-radius: 6px;
+            background-color: #ffffff;
+          "
+        >
+          ĐẶT LẠI MẬT KHẨU
+        </a>
+      </div>
+
+      <p style="font-size: 15px; color: #FFDADA;">
+        Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.
+        Liên kết sẽ hết hạn sau <b>10 phút</b>.
+      </p>
+
+      <p style="font-size: 15px; color: #FFDADA;">
+        Nếu nút trên không hoạt động, hãy sao chép và dán đường dẫn sau vào trình duyệt:
+      </p>
+
+      <p style="font-size: 14px; color: #ffffff; word-wrap: break-word;">
+        ${resetPasswordUrl}
+      </p>
+
+      <footer style="margin-top: 24px; text-align: center; font-size: 14px; color: #FFCACA;">
+        <p>
+          Trân trọng,<br />
+          <b>Đại học Bách Khoa</b>
         </p>
-
-        <p style="font-size: 16px; color: #ccc;">
-            You requested to reset your password. Please click the button below to proceed:
+        <p style="font-size: 12px; color: #FFBABA;">
+          Đây là email tự động, vui lòng không trả lời.
         </p>
-
-        <div style="text-align: center; margin: 20px 0;">
-            <a
-                href="${resetPasswordUrl}"
-                style="display: inline-block; font-size: 16px; font-weight: bold; color: #000; text-decoration: none; padding: 12px 20px; border: 1px solid #fff; border-radius: 5px; background-color: #fff;"
-            >
-                Reset Password
-            </a>
-        </div>
-
-        <p style="font-size: 16px; color: #ccc;">
-            If you did not request this, please ignore this email. The link will expire in 10 minutes.
-        </p>
-
-        <p style="font-size: 16px; color: #ccc;">
-            If the button above doesn't work, copy and paste the following URL into your browser:
-        </p>
-
-        <p style="font-size: 16px; color: #fff; word-wrap: break-word;">
-            ${resetPasswordUrl}
-        </p>
-
-        <footer style="margin-top: 20px; text-align: center; font-size: 14px; color: #666;">
-            <p>Thank you,<br>BookWorm Team</p>
-            <p style="font-size: 12px; color: #444;">
-                This is an automated message. Please do not reply to this email.
-            </p>
-        </footer>
+      </footer>
     </div>
-    `
-};
+  `;
+}
