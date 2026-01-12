@@ -7,6 +7,7 @@ import { sendVerificationCode } from "../utils/sendVerificationCode.js";
 import { sendToken } from "../utils/sendToken.js";
 import { generateForgotPasswordEmailTemplate } from "../utils/emailTemplates.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import { validatePassword } from "./validatePassword.js";
 
 
 
@@ -28,15 +29,20 @@ export const register = catchAsyncErrors(async (req, res, next) => {
             return next(
                 new ErrorHandler(
                     "You have exceeded the number of registration attempts. Please contact support.",
-                    400
+                    500
                 )
             );
         }
-        if (password.length < 8 || password.length > 16) {
-            return next(
-                new ErrorHandler("Password must be between 8 and 16 characters.", 400)
-            );
+
+        const isPasswordValidate = validatePassword(password);
+        if(isPasswordValidate){
+            return next(new ErrorHandler(isPasswordValidate, 400));
         }
+        // if (password.length < 8 || password.length > 16) {
+        //     return next(
+        //         new ErrorHandler("Password must be between 8 and 16 characters.", 400)
+        //     );
+        // }
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = await User.create({
             name,
@@ -183,7 +189,7 @@ export const forgotPassword = catchAsyncErrors (async (req, res, next) => {
         user.resetPasswordToken = undefined;
         user.resetPasswordExpire = undefined;
         await user.save({ validateBeforeSave: false });
-        return next(new ErrorHandler(error.message, 500));
+        return next(new ErrorHandler(error.message || "Cannot send email.", 500));
     }
 });
 
@@ -207,22 +213,29 @@ export const resetPassword = catchAsyncErrors(async (req, res, next) => {
             )
         );
     }
-    if (req.body.password !== req.body.confirmPassword) {
-        return next(
-            new ErrorHandler("Password & confirm password do not match.", 400)
-        );
+
+    const isPasswordValidate = validatePassword(req.body.password, req.body.confirmNewPassword);
+
+    if(isPasswordValidate){
+        return next(new ErrorHandler(isPasswordValidate, 400));
     }
 
-    if (
-        req.body.password.length < 8 ||
-        req.body.password.length > 16 ||
-        req.body.confirmPassword.length < 8 ||
-        req.body.confirmPassword.length > 16
-    ) {
-        return next(
-            new ErrorHandler("Password must be between 8 and 16 characters.", 400)
-        );
-    }
+    // if (req.body.password !== req.body.confirmPassword) {
+    //     return next(
+    //         new ErrorHandler("Password & confirm password do not match.", 400)
+    //     );
+    // }
+
+    // if (
+    //     req.body.password.length < 8 ||
+    //     req.body.password.length > 16 ||
+    //     req.body.confirmPassword.length < 8 ||
+    //     req.body.confirmPassword.length > 16
+    // ) {
+    //     return next(
+    //         new ErrorHandler("Password must be between 8 and 16 characters.", 400)
+    //     );
+    // }
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
     user.password = hashedPassword;
     user.resetPasswordToken = undefined;
@@ -247,26 +260,11 @@ export const updatePassword = catchAsyncErrors(async (req, res, next) => {
     if (!isPasswordMatched) {
         return next(new ErrorHandler("Current password is incorrect.", 400));
     }
-
-    if (
-        newPassword.length < 8 ||
-        newPassword.length > 16 ||
-        confirmNewPassword.length < 8 ||
-        confirmNewPassword.length > 16
-    ) {
-        return next(
-            new ErrorHandler("Password must be between 8 and 16 characters.", 400)
-        );
+    const isPasswordValidate = validatePassword(newPassword, confirmNewPassword);
+    if(isPasswordMatched){
+        return next(new ErrorHandler(isPasswordMatched, 400));
     }
 
-    if (newPassword !== confirmNewPassword) {
-        return next(
-            new ErrorHandler(
-                "New password and confirm new password do not match.",
-                400
-            )
-        );
-    }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
