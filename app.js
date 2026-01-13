@@ -11,12 +11,21 @@ import userRouter from "./routes/user.route.js";
 import expressFileupload from "express-fileupload";
 import { notifyUsers } from "./services/notifyUsers.js";
 import { removeUnverifiedAccounts } from "./services/removeUnverifiedAccounts.js";
+import { v2 as cloudinary } from "cloudinary";
 
 export const app = express();
 
+// ✅ Load env trước
 config({ path: "./config/config.env" });
 
-// ✅ FIX CORS: fallback chắc chắn về vite localhost:5173 + cho phép PATCH
+// ✅ Config cloudinary sau khi đã có process.env
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// ✅ FIX CORS
 const FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:5173").trim();
 
 const corsOptions = {
@@ -27,11 +36,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// ✅ FIX lỗi path-to-regexp: không dùng "*"
 app.options(/.*/, cors(corsOptions));
-
-
 
 app.use(cookieParser());
 app.use(express.json());
