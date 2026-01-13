@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-
 const userSchema = new mongoose. Schema ({
     name: {
         type: String,
@@ -26,6 +25,18 @@ const userSchema = new mongoose. Schema ({
         default: "User"
     },
     accountVerified: { type: Boolean, default: false },
+
+    // ===== Quản trị tài khoản =====
+    // Khóa/mở tài khoản (khóa thì không cho đăng nhập / thao tác)
+    isLocked: { type: Boolean, default: false },
+    lockedAt: { type: Date, default: null },
+    lockReason: { type: String, default: "" },
+
+    // Xóa mềm (ẩn khỏi danh sách, có thể khôi phục)
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+
     borrowedBooks: [
         {
             bookId: {
@@ -54,6 +65,9 @@ const userSchema = new mongoose. Schema ({
         timestamps: true,
     }
 );
+
+// Không cho trùng email
+userSchema.index({ email: 1 }, { unique: true });
 
 userSchema.methods.generateVerificationCode = function () {
     function geenerateRandomFiveDigitNumber() {

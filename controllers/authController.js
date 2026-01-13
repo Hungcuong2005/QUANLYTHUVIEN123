@@ -14,11 +14,11 @@ import { validatePassword } from "./validatePassword.js";
 export const register = catchAsyncErrors(async (req, res, next) => {
     try {
         const { name, email, password } = req.body;
-        if (!name || !email || ! password) {
+        if (!name || !email || !password) {
             return next(new ErrorHandler("Please enter all fields.", 400));
         }
         const isRegistered = await User.findOne({ email, accountVerified: true });
-        if(isRegistered){
+        if (isRegistered) {
             return next(new ErrorHandler("User already exists", 400));
         }
         const registerationAttemptsByUser = await User.find({
@@ -35,7 +35,7 @@ export const register = catchAsyncErrors(async (req, res, next) => {
         }
 
         const isPasswordValidate = validatePassword(password);
-        if(isPasswordValidate){
+        if (isPasswordValidate) {
             return next(new ErrorHandler(isPasswordValidate, 400));
         }
         // if (password.length < 8 || password.length > 16) {
@@ -58,7 +58,7 @@ export const register = catchAsyncErrors(async (req, res, next) => {
 });
 
 
-export const verifyOTP = catchAsyncErrors (async (req, res, next) => {
+export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
     const { email, otp } = req.body;
     if (!email || !otp) {
         return next(new ErrorHandler("Email or otp is missing.", 400));
@@ -69,13 +69,13 @@ export const verifyOTP = catchAsyncErrors (async (req, res, next) => {
             accountVerified: false,
         }).sort({ createdAt: -1 });
 
-        if (!userAllEntries) { 
+        if (!userAllEntries) {
             return next(new ErrorHandler("User not found.", 404));
         }
 
 
         let user;
-        
+
         if (userAllEntries.length > 1) {
             user = userAllEntries[0];
             await User.deleteMany({
@@ -84,7 +84,7 @@ export const verifyOTP = catchAsyncErrors (async (req, res, next) => {
                 accountVerified: false,
             });
         } else {
-            user = userAllEntries[0]; 
+            user = userAllEntries[0];
         }
 
         if (user.verificationCode !== Number(otp)) {
@@ -116,26 +116,34 @@ export const verifyOTP = catchAsyncErrors (async (req, res, next) => {
 
 export const login = catchAsyncErrors(async (req, res, next) => {
     const { email, password } = req.body;
-    if (!email || ! password) {
+    if (!email || !password) {
         return next(new ErrorHandler("Please enter all fields.", 400));
     }
-    const user = await User.findOne({ email, accountVerified: true }).select(
-        "+password"
-    );
+    const user = await User.findOne({
+        email,
+        accountVerified: true,
+        isDeleted: false,
+    }).select("+password");
+
     if (!user) {
         return next(new ErrorHandler("Invalid email or password.", 400));
     }
+
+    if (user.isLocked) {
+        return next(new ErrorHandler(user.lockReason || "Tài khoản đã bị khóa.", 403));
+    }
+
     const isPasswordMatched = await bcrypt.compare(password, user.password);
     if (!isPasswordMatched) {
         return next(new ErrorHandler("Invalid email or password.", 400));
     }
-    sendToken (user, 200, "User login successfully.", res);
+    sendToken(user, 200, "User login successfully.", res);
 });
 
 
-export const logout = catchAsyncErrors (async (req, res, next) => {
+export const logout = catchAsyncErrors(async (req, res, next) => {
     res
-        .status (200)
+        .status(200)
         .cookie("token", "", {
             expires: new Date(Date.now()),
             httpOnly: true,
@@ -147,7 +155,7 @@ export const logout = catchAsyncErrors (async (req, res, next) => {
 });
 
 
-export const getUser = catchAsyncErrors (async (req, res, next) => {
+export const getUser = catchAsyncErrors(async (req, res, next) => {
     const user = req.user;
     res.status(200).json({
         success: true,
@@ -156,8 +164,8 @@ export const getUser = catchAsyncErrors (async (req, res, next) => {
 });
 
 
-export const forgotPassword = catchAsyncErrors (async (req, res, next) => {
-    if(!req.body.email){
+export const forgotPassword = catchAsyncErrors(async (req, res, next) => {
+    if (!req.body.email) {
         return next(new ErrorHandler("Email is required."))
     }
     const user = await User.findOne({
@@ -172,7 +180,7 @@ export const forgotPassword = catchAsyncErrors (async (req, res, next) => {
     await user.save({ validateBeforeSave: false });
 
     const resetPasswordUrl = `${process.env.FRONTEND_URL}/password/reset/${resetToken}`;
-    
+
     const message = generateForgotPasswordEmailTemplate(resetPasswordUrl);
 
     try {
@@ -197,13 +205,13 @@ export const forgotPassword = catchAsyncErrors (async (req, res, next) => {
 export const resetPassword = catchAsyncErrors(async (req, res, next) => {
     const { token } = req.params;
     const resetPasswordToken = crypto
-    .createHash("sha256")
-    .update(token)
-    .digest("hex");
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
 
     const user = await User.findOne({
         resetPasswordToken,
-        resetPasswordExpire: { $gt: Date.now()},
+        resetPasswordExpire: { $gt: Date.now() },
     });
     if (!user) {
         return next(
@@ -216,7 +224,7 @@ export const resetPassword = catchAsyncErrors(async (req, res, next) => {
 
     const isPasswordValidate = validatePassword(req.body.password, req.body.confirmNewPassword);
 
-    if(isPasswordValidate){
+    if (isPasswordValidate) {
         return next(new ErrorHandler(isPasswordValidate, 400));
     }
 
@@ -239,18 +247,18 @@ export const resetPassword = catchAsyncErrors(async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
     user.password = hashedPassword;
     user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined; 
+    user.resetPasswordExpire = undefined;
 
     await user.save();
 
-    sendToken (user, 200, "Password reset successfully.", res);
+    sendToken(user, 200, "Password reset successfully.", res);
 });
 
 
 export const updatePassword = catchAsyncErrors(async (req, res, next) => {
     const user = await User.findById(req.user._id).select("+password");
     const { currentPassword, newPassword, confirmNewPassword } = req.body;
-    if (!currentPassword || ! newPassword || ! confirmNewPassword) {
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
         return next(new ErrorHandler("Please enter all fields.", 400));
     }
     const isPasswordMatched = await bcrypt.compare(
@@ -261,7 +269,7 @@ export const updatePassword = catchAsyncErrors(async (req, res, next) => {
         return next(new ErrorHandler("Current password is incorrect.", 400));
     }
     const isPasswordValidate = validatePassword(newPassword, confirmNewPassword);
-    if(isPasswordMatched){
+    if (isPasswordMatched) {
         return next(new ErrorHandler(isPasswordMatched, 400));
     }
 
