@@ -11,4 +11,3 @@ export const validatePassword = (password, confirmPassword = null) => {
 
   return null;
 };
-v
