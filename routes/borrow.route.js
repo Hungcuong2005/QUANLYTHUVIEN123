@@ -6,6 +6,7 @@ import {
   prepareReturnPayment,
   confirmCashPaymentAndReturn,
   vnpayReturn,
+  renewBorrowedBook,
 } from "../controllers/borrowControllers.js";
 
 import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
@@ -27,6 +28,8 @@ router.get(
 );
 
 router.get("/my-borrowed-books", isAuthenticated, borrowedBooks);
+
+router.post("/renew/:bookId", isAuthenticated, renewBorrowedBook);
 
 /**
  * ✅ FLOW TRẢ SÁCH + THANH TOÁN

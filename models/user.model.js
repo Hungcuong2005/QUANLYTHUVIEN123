@@ -49,7 +49,15 @@ const userSchema = new mongoose. Schema ({
             },
             bookTitle: String,
             borrowedDate: Date,
-            dueDate: Date
+            dueDate: Date,
+            renewCount: {
+                type: Number,
+                default: 0,
+            },
+            lastRenewedAt: {
+                type: Date,
+                default: null,
+            },
         },
     ],
     avatar: {

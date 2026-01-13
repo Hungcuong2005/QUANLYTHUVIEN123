@@ -46,6 +46,16 @@ const borrowSchema = new mongoose.Schema(
       default: null,
     },
 
+    renewCount: {
+      type: Number,
+      default: 0,
+    },
+
+    lastRenewedAt: {
+      type: Date,
+      default: null,
+    },
+
     // tiền phạt (backend sẽ cập nhật lúc “prepare payment”)
     fine: {
       type: Number,

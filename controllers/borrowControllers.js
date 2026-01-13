@@ -124,6 +124,10 @@ const finalizeReturnAfterPaid = async ({ bookId, email }) => {
   return borrow;
 };
 
+const BORROW_DAYS = 7;
+const RENEW_DAYS = 7;
+const MAX_RENEWALS = 2;
+
 /**
  * ===============================
  * 📌 GHI NHẬN VIỆC MƯỢN SÁCH (giữ nguyên)
@@ -154,15 +158,19 @@ export const recordBorrowedBook = catchAsyncErrors(async (req, res, next) => {
     bookId: book._id,
     bookTitle: book.title,
     borrowedDate: new Date(),
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    dueDate: new Date(Date.now() + BORROW_DAYS * 24 * 60 * 60 * 1000),
+    renewCount: 0,
+    lastRenewedAt: null,
   });
   await user.save();
 
   await Borrow.create({
     user: { id: user._id, name: user.name, email: user.email },
     book: book._id,
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    dueDate: new Date(Date.now() + BORROW_DAYS * 24 * 60 * 60 * 1000),
     price: book.price,
+    renewCount: 0,
+    lastRenewedAt: null,
 
     // ✅ default
     payment: {
@@ -175,6 +183,87 @@ export const recordBorrowedBook = catchAsyncErrors(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: "Ghi nhận mượn sách thành công.",
+  });
+});
+
+/**
+ * ===============================
+ * ✅ GIA HẠN MƯỢN (USER)
+ * ===============================
+ * POST /api/v1/borrow/renew/:bookId
+ */
+export const renewBorrowedBook = catchAsyncErrors(async (req, res, next) => {
+  const { bookId } = req.params;
+  const user = req.user;
+
+  let resolvedBookId = bookId;
+  let borrowedBook = user.borrowedBooks.find(
+    (b) => b.bookId.toString() === bookId && b.returned === false
+  );
+
+  if (!borrowedBook) {
+    const borrowRecord = await Borrow.findOne({
+      _id: bookId,
+      "user.id": user._id,
+      returnDate: null,
+    });
+
+    if (borrowRecord) {
+      resolvedBookId = borrowRecord.book.toString();
+      borrowedBook = user.borrowedBooks.find(
+        (b) => b.bookId.toString() === resolvedBookId && b.returned === false
+      );
+    }
+  }
+
+  if (!borrowedBook) {
+    return next(new ErrorHandler("Bạn chưa mượn sách này.", 400));
+  }
+
+  const dueDate = borrowedBook.dueDate ? new Date(borrowedBook.dueDate) : null;
+  if (dueDate && dueDate <= new Date()) {
+    return next(new ErrorHandler("Sách đã quá hạn, không thể gia hạn.", 400));
+  }
+
+  const currentRenewCount = borrowedBook.renewCount || 0;
+  if (currentRenewCount >= MAX_RENEWALS) {
+    return next(new ErrorHandler("Đã vượt quá số lần gia hạn.", 400));
+  }
+
+  const book = await Book.findById(resolvedBookId);
+  if (!book) return next(new ErrorHandler("Không tìm thấy sách.", 404));
+
+  if (book.holdCount && book.holdCount > 0) {
+    return next(new ErrorHandler("Sách đang có người đặt trước, không thể gia hạn.", 400));
+  }
+
+  const baseDate = dueDate || new Date();
+  const newDueDate = new Date(baseDate.getTime() + RENEW_DAYS * 24 * 60 * 60 * 1000);
+
+  borrowedBook.dueDate = newDueDate;
+  borrowedBook.renewCount = currentRenewCount + 1;
+  borrowedBook.lastRenewedAt = new Date();
+  await user.save();
+
+  const borrow = await Borrow.findOne({
+    book: resolvedBookId,
+    "user.id": user._id,
+    returnDate: null,
+  });
+
+  if (borrow) {
+    borrow.dueDate = newDueDate;
+    borrow.renewCount = (borrow.renewCount || 0) + 1;
+    borrow.lastRenewedAt = new Date();
+    await borrow.save();
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Gia hạn mượn sách thành công.",
+    dueDate: newDueDate,
+    renewCount: borrowedBook.renewCount,
+    maxRenewals: MAX_RENEWALS,
   });
 });
 
