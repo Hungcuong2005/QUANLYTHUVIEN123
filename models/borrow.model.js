@@ -24,10 +24,20 @@ const borrowSchema = new mongoose.Schema(
       required: true,
     },
 
+    // ✅ MƯỢN THEO CUỐN SÁCH VẬT LÝ (BookCopy)
+    bookCopy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "BookCopy",
+      required: true,
+      index: true,
+    },
+
+    // ✅ Giữ tham chiếu về đầu sách để query nhanh (thống kê/UI)
     book: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Book",
       required: true,
+      index: true,
     },
 
     borrowDate: {
@@ -67,7 +77,7 @@ const borrowSchema = new mongoose.Schema(
       default: false,
     },
 
-    // ✅ THÊM THÔNG TIN THANH TOÁN THẬT
+    // ✅ THÔNG TIN THANH TOÁN
     payment: {
       method: {
         type: String,
@@ -96,5 +106,10 @@ const borrowSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ✅ Index phổ biến để lọc nhanh
+borrowSchema.index({ "user.id": 1, returnDate: 1, createdAt: -1 });
+borrowSchema.index({ book: 1, createdAt: -1 });
+borrowSchema.index({ bookCopy: 1, createdAt: -1 });
 
 export const Borrow = mongoose.model("Borrow", borrowSchema);

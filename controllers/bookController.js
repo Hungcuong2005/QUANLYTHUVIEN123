@@ -23,10 +23,9 @@ const recomputeBookCounts = async (bookId) => {
 };
 
 // ✅ Sinh copyCode theo format: <TAIL>-<0001>
-// (TAIL = 6 ký tự cuối ISBN hoặc _id)
 const buildCopyCode = (book, copyNumber) => {
   const tail = String(book.isbn || book._id).replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
-  return `${tail}-${String(copyNumber).padStart(4, "0")}`; // 0001, 0002...
+  return `${tail}-${String(copyNumber).padStart(4, "0")}`;
 };
 
 // ✅ GET /api/v1/book/isbn/:isbn
@@ -42,8 +41,32 @@ export const getBookByIsbn = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
+// ✅ GET /api/v1/book/:id/available-copies - LẤY DANH SÁCH BOOKCOPY CÓ SẴN
+export const getAvailableCopies = catchAsyncErrors(async (req, res, next) => {
+  const { id } = req.params;
+
+  const book = await Book.findById(id);
+  if (!book) {
+    return next(new ErrorHandler("Không tìm thấy sách.", 404));
+  }
+
+  // Lấy tất cả BookCopy có trạng thái "available"
+  const copies = await BookCopy.find({
+    bookId: id,
+    status: "available",
+  })
+    .sort({ copyNumber: 1 }) // Sắp xếp theo số thứ tự
+    .select("_id copyCode copyNumber status notes price");
+
+  res.status(200).json({
+    success: true,
+    copies,
+    total: copies.length,
+    bookTitle: book.title,
+  });
+});
+
 // ✅ POST /api/v1/book/admin/add
-// body JSON: { isbn, title, author, description, price, quantity, shelfLocation }
 export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
   const {
     isbn,
@@ -56,14 +79,12 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
 
   const normalizedIsbn = isbn ? normalizeIsbn(isbn) : "";
 
-  // 1) ISBN có -> tìm Book
   let book = null;
   if (normalizedIsbn) {
     book = await Book.findOne({ isbn: normalizedIsbn });
   }
   const existedBefore = !!book;
 
-  // 2) ISBN chưa có -> tạo Book mới
   if (!book) {
     if (!title || !author) {
       return next(
@@ -80,21 +101,17 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
       description: String(description || "").trim(),
       isbn: normalizedIsbn || undefined,
       price: Number(price) || 0,
-
       quantity: 0,
       totalCopies: 0,
       availability: false,
       holdCount: 0,
     });
   } else {
-    // ✅ Nếu ISBN đã có, cho phép cập nhật price/description nếu bạn muốn
-    // (bạn có thể bỏ phần này nếu không muốn overwrite)
     if (typeof price !== "undefined") book.price = Number(price) || book.price;
     if (typeof description !== "undefined") book.description = String(description || "").trim();
     await book.save();
   }
 
-  // 3) Tạo N BookCopy với copyNumber tăng dần theo bookId
   const count = Math.max(parseInt(quantity, 10) || 1, 1);
 
   const last = await BookCopy.findOne({ bookId: book._id })
@@ -103,7 +120,6 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
 
   let startNumber = (last?.copyNumber || 0) + 1;
 
-  // Tạo mảng docs để insertMany (nhanh + ít lỗi “nửa chừng”)
   const docs = [];
   for (let i = 0; i < count; i++) {
     const copyNumber = startNumber + i;
@@ -123,7 +139,6 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
   try {
     inserted = await BookCopy.insertMany(docs, { ordered: true });
   } catch (err) {
-    // Nếu trùng key (hiếm, do concurrency), thử “nhảy số” và tạo lại 1 lần
     if (err?.code === 11000) {
       const lastAgain = await BookCopy.findOne({ bookId: book._id })
         .sort({ copyNumber: -1 })
@@ -148,12 +163,10 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
 
       inserted = await BookCopy.insertMany(docs2, { ordered: true });
     } else {
-      // ❌ Lỗi khác: báo rõ để không bị “book tạo nhưng copy không có”
       return next(new ErrorHandler(err?.message || "Tạo BookCopy thất bại.", 500));
     }
   }
 
-  // 4) cập nhật counts => Book.quantity sẽ đúng theo available copies
   await recomputeBookCounts(book._id);
 
   const latestBook = await Book.findById(book._id);

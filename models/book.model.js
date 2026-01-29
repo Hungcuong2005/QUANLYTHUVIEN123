@@ -18,7 +18,11 @@ const bookSchema = new mongoose.Schema(
 
     publisher: { type: String, default: "", trim: true },
     publishYear: { type: Number, min: 0, default: null },
-    category: { type: String, default: "", trim: true },
+
+    // ✅ Thể loại (1 thể loại chính - giữ lại để không vỡ UI/API cũ)
+    category: { type: String, default: "", trim: true, index: true },
+
+    
 
     coverImage: { type: String, default: "" },
 
@@ -40,5 +44,7 @@ const bookSchema = new mongoose.Schema(
 );
 
 bookSchema.index({ title: 1, author: 1 });
+// ✅ Tìm theo nhiều tag thể loại nhanh hơn
+
 
 export const Book = mongoose.model("Book", bookSchema);

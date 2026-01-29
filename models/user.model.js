@@ -2,114 +2,116 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-const userSchema = new mongoose. Schema ({
+const userSchema = new mongoose.Schema(
+  {
     name: {
-        type: String,
-        required: true,
-        trim: true,
+      type: String,
+      required: true,
+      trim: true,
     },
     email: {
-        type: String,
-        required: true,
-        lowercase: true,
+      type: String,
+      required: true,
+      lowercase: true,
     },
     password: {
-        type: String,
-        required: true,
-        select: false,
-        
+      type: String,
+      required: true,
+      select: false,
     },
     role: {
-        type: String,
-        enum: ["Admin", "User"],
-        default: "User"
+      type: String,
+      enum: ["Admin", "User"],
+      default: "User",
     },
     accountVerified: { type: Boolean, default: false },
 
     // ===== Quản trị tài khoản =====
-    // Khóa/mở tài khoản (khóa thì không cho đăng nhập / thao tác)
     isLocked: { type: Boolean, default: false },
     lockedAt: { type: Date, default: null },
     lockReason: { type: String, default: "" },
 
-    // Xóa mềm (ẩn khỏi danh sách, có thể khôi phục)
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 
     borrowedBooks: [
-        {
-            bookId: {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: "Borrow",
-            },
-            returned: {
-                type: Boolean,
-                default: false,
-            },
-            bookTitle: String,
-            borrowedDate: Date,
-            dueDate: Date,
-            renewCount: {
-                type: Number,
-                default: 0,
-            },
-            lastRenewedAt: {
-                type: Date,
-                default: null,
-            },
+      {
+        // ✅ đây là Borrow ID (không phải Book ID)
+        borrowId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Borrow",
         },
+        returned: {
+          type: Boolean,
+          default: false,
+        },
+
+        // snapshot phục vụ UI
+        bookTitle: String,
+        borrowedDate: Date,
+        dueDate: Date,
+
+        renewCount: {
+          type: Number,
+          default: 0,
+        },
+        lastRenewedAt: {
+          type: Date,
+          default: null,
+        },
+      },
     ],
+
     avatar: {
-        public_id: String,
-        url: String,
+      public_id: String,
+      url: String,
     },
+
     verificationCode: Number,
     verficationCodeExpire: Date,
     resetPasswordToken: String,
     resetPasswordExpire: Date,
-    },
-    {
-        timestamps: true,
-    }
+  },
+  {
+    timestamps: true,
+  }
 );
 
 // Không cho trùng email
 userSchema.index({ email: 1 }, { unique: true });
 
 userSchema.methods.generateVerificationCode = function () {
-    function geenerateRandomFiveDigitNumber() {
-        const firstDigit = Math.floor(Math.random() * 9) + 1; 
-        const remainingDigits = Math.floor(Math.random() * 10000)
-            .toString()
-            .padStart (4, 0);
-        return parseInt(firstDigit + remainingDigits);
-    }
-    const verificationCode = geenerateRandomFiveDigitNumber();
-    this.verificationCode = verificationCode;
-    this.verficationCodeExpire = Date.now() + 15 * 60 * 1000;
-    return verificationCode;
+  function geenerateRandomFiveDigitNumber() {
+    const firstDigit = Math.floor(Math.random() * 9) + 1;
+    const remainingDigits = Math.floor(Math.random() * 10000)
+      .toString()
+      .padStart(4, 0);
+    return parseInt(firstDigit + remainingDigits);
+  }
+  const verificationCode = geenerateRandomFiveDigitNumber();
+  this.verificationCode = verificationCode;
+  this.verficationCodeExpire = Date.now() + 15 * 60 * 1000;
+  return verificationCode;
 };
 
-
 userSchema.methods.generateToken = function () {
-    return jwt.sign({ id: this._id }, process.env.JWT_SECRET_KEY, {
-        expiresIn: process.env.JWT_EXPIRE,
-    });
+  return jwt.sign({ id: this._id }, process.env.JWT_SECRET_KEY, {
+    expiresIn: process.env.JWT_EXPIRE,
+  });
 };
 
 userSchema.methods.getResetPasswordToken = function () {
-    const resetToken = crypto.randomBytes (20).toString("hex");
+  const resetToken = crypto.randomBytes(20).toString("hex");
 
-    this.resetPasswordToken = crypto
-        .createHash("sha256")
-        .update (resetToken)
-        .digest("hex");
+  this.resetPasswordToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
 
-    this.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
-    
-    return resetToken;
+  this.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+
+  return resetToken;
 };
-
 
 export const User = mongoose.model("User", userSchema);

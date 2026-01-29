@@ -36,15 +36,16 @@ const BookCopySchema = new mongoose.Schema(
       index: true,
     },
 
-
     acquiredAt: { type: Date, default: Date.now },
     price: { type: Number, default: 0 },
     notes: { type: String, default: "", trim: true },
 
+    // ✅ Borrow hiện tại của cuốn này (nếu đang mượn)
     currentBorrowId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Borrow",
       default: null,
+      index: true,
     },
   },
   { timestamps: true }
@@ -53,7 +54,7 @@ const BookCopySchema = new mongoose.Schema(
 // ✅ Index hữu ích: tìm nhanh theo bookId + status
 BookCopySchema.index({ bookId: 1, status: 1 });
 
-// ✅ Chặn trùng copyNumber trong cùng 1 đầu sáchz
+// ✅ Chặn trùng copyNumber trong cùng 1 đầu sách
 BookCopySchema.index({ bookId: 1, copyNumber: 1 }, { unique: true });
 
 // ✅ Clean copyCode

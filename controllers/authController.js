@@ -12,50 +12,37 @@ import { validatePassword } from "./validatePassword.js";
 
 
 export const register = catchAsyncErrors(async (req, res, next) => {
-    try {
-        const { name, email, password } = req.body;
-        if (!name || !email || !password) {
-            return next(new ErrorHandler("Please enter all fields.", 400));
-        }
-        const isRegistered = await User.findOne({ email, accountVerified: true });
-        if (isRegistered) {
-            return next(new ErrorHandler("User already exists", 400));
-        }
-        const registerationAttemptsByUser = await User.find({
-            email,
-            accountVerified: false,
-        });
-        if (registerationAttemptsByUser.length >= 5) {
-            return next(
-                new ErrorHandler(
-                    "You have exceeded the number of registration attempts. Please contact support.",
-                    500
-                )
-            );
-        }
+  const { name, email, password } = req.body;
 
-        const isPasswordValidate = validatePassword(password);
-        if (isPasswordValidate) {
-            return next(new ErrorHandler(isPasswordValidate, 400));
-        }
-        // if (password.length < 8 || password.length > 16) {
-        //     return next(
-        //         new ErrorHandler("Password must be between 8 and 16 characters.", 400)
-        //     );
-        // }
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = await User.create({
-            name,
-            email,
-            password: hashedPassword,
-        })
-        const verificationCode = await user.generateVerificationCode();
-        await user.save();
-        sendVerificationCode(verificationCode, email, res);
-    } catch (error) {
-        next(error);
-    }
+  if (!name || !email || !password) {
+    return next(new ErrorHandler("Please enter all fields.", 400));
+  }
+
+  const isRegistered = await User.findOne({ email, accountVerified: true });
+  if (isRegistered) {
+    return next(new ErrorHandler("User already exists", 400));
+  }
+
+  const isPasswordValidate = validatePassword(password);
+  if (isPasswordValidate) {
+    return next(new ErrorHandler(isPasswordValidate, 400));
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const user = await User.create({
+    name,
+    email,
+    password: hashedPassword,
+  });
+
+  const verificationCode = await user.generateVerificationCode();
+  await user.save();
+
+  // ❗ KHÔNG try/catch, KHÔNG next(error)
+  return sendVerificationCode(verificationCode, email, res);
 });
+
 
 
 export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
@@ -269,8 +256,9 @@ export const updatePassword = catchAsyncErrors(async (req, res, next) => {
         return next(new ErrorHandler("Current password is incorrect.", 400));
     }
     const isPasswordValidate = validatePassword(newPassword, confirmNewPassword);
-    if (isPasswordMatched) {
-        return next(new ErrorHandler(isPasswordMatched, 400));
+    // ✅ SỬA: Từ isPasswordMatched thành isPasswordValidate
+    if (isPasswordValidate) {
+        return next(new ErrorHandler(isPasswordValidate, 400));
     }
 
 
@@ -282,4 +270,3 @@ export const updatePassword = catchAsyncErrors(async (req, res, next) => {
         message: "Password updated.",
     });
 });
-
