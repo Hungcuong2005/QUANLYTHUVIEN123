@@ -2,31 +2,46 @@ import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
 import ErrorHandler from "../middlewares/errorMiddlewares.js";
 import { Book } from "../models/book.model.js";
 import BookCopy from "../models/bookCopy.model.js";
-
-// ✅ NEW: Category để validate & populate
 import { Category } from "../models/category.model.js";
 
+// Giới hạn tối đa số thể loại cho 1 cuốn sách
 const MAX_CATEGORIES = 3;
 
+// ==========================================
+// HÀM CÔNG CỤ (HELPER FUNCTIONS)
+// ==========================================
+
+/**
+ * Chuẩn hóa ISBN: Xóa dấu gạch ngang, khoảng trắng, chuyển về chữ hoa.
+ */
 const normalizeIsbn = (isbn) =>
   String(isbn || "")
     .trim()
     .replace(/[-\s]/g, "")
     .toUpperCase();
 
+/**
+ * Tính toán lại số lượng sách (Quantity, TotalCopies, Availability)
+ * Dựa trên số liệu thực tế từ bảng BookCopy.
+ */
 const recomputeBookCounts = async (bookId) => {
   const [total, available] = await Promise.all([
-    BookCopy.countDocuments({ bookId }),
-    BookCopy.countDocuments({ bookId, status: "available" }),
+    BookCopy.countDocuments({ bookId }), // Tổng số bản sao
+    BookCopy.countDocuments({ bookId, status: "available" }), // Số bản sao có sẵn
   ]);
 
   const quantity = available;
+  // totalCopies = total; // Biến này có thể dùng để lưu tổng số bản nhập về
   const totalCopies = total;
   const availability = quantity > 0;
 
+  // Cập nhật vào Book chính
   await Book.findByIdAndUpdate(bookId, { quantity, totalCopies, availability });
 };
 
+/**
+ * Lấy số lượng bản sao hiện tại (Tổng và Available)
+ */
 const getBookCopyCounts = async (bookId) => {
   const [total, available] = await Promise.all([
     BookCopy.countDocuments({ bookId }),
@@ -35,9 +50,12 @@ const getBookCopyCounts = async (bookId) => {
   return { total, available };
 };
 
-// ✅ Sinh copyCode theo format: <ISBN_NORMALIZED>-<0001> (mở rộng, tránh trùng)
-// - Nếu có ISBN: dùng FULL ISBN đã normalize (không cắt 6 ký tự cuối)
-// - Nếu không có ISBN: fallback theo _id (đuôi 12 ký tự)
+/**
+ * Tạo mã copyCode (Mã cá biệt cho từng cuốn sách)
+ * Format: <ISBN> - <Số thứ tự 4 chữ số>
+ * Ví dụ: 9781234567890-0001
+ * Nếu không có ISBN -> Dùng 12 ký tự cuối của Book ID.
+ */
 const buildCopyCode = (book, copyNumber) => {
   const isbnNorm = String(book.isbn || "")
     .trim()
@@ -56,19 +74,24 @@ const buildCopyCode = (book, copyNumber) => {
   return `${idTail}-${String(copyNumber).padStart(4, "0")}`;
 };
 
-// ✅ NEW: normalize categories from body (max 3) + validate exist
+/**
+ * Chuẩn hóa và Validate danh sách thể loại (Category IDs)
+ * - Tối đa 3 thể loại
+ * - Loại bỏ trùng lặp
+ * - Kiểm tra xem ID có tồn tại trong DB không
+ */
 const normalizeAndValidateCategoryIds = async (categories, next) => {
   let arr = Array.isArray(categories) ? categories : [];
   arr = arr
     .map((x) => String(x || "").trim())
     .filter(Boolean);
 
-  // unique + max 3
+  // Loại bỏ trùng và cắt lấy tối đa MAX_CATEGORIES
   arr = Array.from(new Set(arr)).slice(0, MAX_CATEGORIES);
 
   if (arr.length === 0) return [];
 
-  // validate tồn tại
+  // Kiểm tra tồn tại trong DB
   const found = await Category.find({ _id: { $in: arr } }).select("_id");
   if (found.length !== arr.length) {
     return next(new ErrorHandler("Có thể loại không tồn tại.", 400));
@@ -77,12 +100,18 @@ const normalizeAndValidateCategoryIds = async (categories, next) => {
   return arr;
 };
 
-// ✅ GET /api/v1/book/isbn/:isbn
+// ==========================================
+// CONTROLLER HANDLERS
+// ==========================================
+
+/**
+ * GET /api/v1/book/isbn/:isbn
+ * Kiểm tra sách có tồn tại không qua ISBN
+ */
 export const getBookByIsbn = catchAsyncErrors(async (req, res, next) => {
   const isbn = normalizeIsbn(req.params.isbn);
   if (!isbn) return next(new ErrorHandler("Thiếu ISBN.", 400));
 
-  // ✅ populate để frontend nhận categories: [{_id,name}]
   const book = await Book.findOne({ isbn }).populate("categories", "name");
 
   res.status(200).json({
@@ -92,7 +121,10 @@ export const getBookByIsbn = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-// ✅ GET /api/v1/book/:id/available-copies - LẤY DANH SÁCH BOOKCOPY CÓ SẴN
+/**
+ * GET /api/v1/book/:id/available-copies
+ * Lấy danh sách các bản sao có sẵn (Status = "available")
+ */
 export const getAvailableCopies = catchAsyncErrors(async (req, res, next) => {
   const { id } = req.params;
 
@@ -116,9 +148,22 @@ export const getAvailableCopies = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-// ✅ POST /api/v1/book/admin/add
+/**
+ * POST /api/v1/book/admin/add
+ * Thêm sách mới HOẶC Thêm bản sao cho sách cũ (nếu trùng ISBN)
+ * Logic phức tạp:
+ * 1. Chuẩn hóa ISBN, Categories.
+ * 2. Tìm xem sách đã có chưa (theo ISBN).
+ *    - Chưa có: Tạo Book mới.
+ *    - Đã có: Cập nhật thông tin Book cũ (nếu có thay đổi) và dùng ID đó.
+ * 3. Tạo các bản sao (BookCopy) theo số lượng yêu cầu (quantity).
+ *    - Sinh mã copyCode tự động.
+ *    - Xử lý trùng lặp (nếu insertMany bị lỗi duplicate key).
+ * 4. Gọi hàm tính toán lại số lượng (recomputeBookCounts).
+ */
 export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
   const startedAt = Date.now();
+  // Tạo Request ID để log (phục vụ debug)
   const reqId =
     (req.headers["x-request-id"] || "").toString() ||
     `addBook-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -126,7 +171,6 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
   const log = (...args) => console.log(`[${reqId}]`, ...args);
   const logErr = (...args) => console.error(`[${reqId}]`, ...args);
 
-  // ✅ log input (đừng log token/pass)
   log("➡️ HIT addBookAndCopies");
   log("req.body =", {
     isbn: req.body?.isbn,
@@ -151,19 +195,18 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
     const normalizedIsbn = normalizeIsbn(isbn);
     const finalIsbn = normalizedIsbn ? normalizedIsbn : undefined;
 
-    log("normalizedIsbn =", normalizedIsbn, "finalIsbn =", finalIsbn);
-
+    // --- BƯỚC 1: Xử lý và Validate Categories ---
     log("🔎 normalizeAndValidateCategoryIds start", categories);
     const categoryIds = await normalizeAndValidateCategoryIds(categories, next);
     log("✅ categoryIds =", categoryIds);
 
     if (categoryIds && categoryIds.length > MAX_CATEGORIES) {
-      log("❌ too many categories", categoryIds.length);
       return next(
         new ErrorHandler(`Mỗi sách tối đa ${MAX_CATEGORIES} thể loại.`, 400)
       );
     }
 
+    // --- BƯỚC 2: Tìm hoặc Tạo Book ---
     let book = null;
     if (finalIsbn) {
       log("🔎 find book by isbn", finalIsbn);
@@ -173,6 +216,7 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
     log("book existedBefore =", existedBefore, "bookId =", book?._id);
 
     if (!book) {
+      // Nếu chưa có sách -> Bắt buộc phải có title và author
       if (!title || !author) {
         log("❌ missing title/author when isbn not found");
         return next(
@@ -193,13 +237,14 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
         categories: categoryIds,
         quantity: 0,
         totalCopies: 0,
-        availability: false,
+        availability: false, // Sẽ update sau khi thêm BookCopy
         holdCount: 0,
         isDeleted: false,
         deletedAt: null,
       });
       log("✅ Book created", book._id);
     } else {
+      // Nếu đã có sách -> Update thông tin mới nhất
       log("✏️ updating existing Book", book._id);
 
       if (title && String(title).trim()) book.title = String(title).trim();
@@ -211,6 +256,7 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
 
       if (Array.isArray(categories)) book.categories = categoryIds;
 
+      // Nếu sách đang bị đánh dấu xóa mêm -> Khôi phục lại
       if (book.isDeleted) {
         book.isDeleted = false;
         book.deletedAt = null;
@@ -220,9 +266,11 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
       log("✅ Book saved", book._id);
     }
 
+    // --- BƯỚC 3: Tạo các bản sao (BookCopy) ---
     const count = Math.max(parseInt(quantity, 10) || 1, 1);
     log("count copies to create =", count);
 
+    // Tìm số thứ tự copyNumber cuối cùng để đánh số tiếp
     log("🔎 find last BookCopy copyNumber...");
     const last = await BookCopy.findOne({ bookId: book._id })
       .sort({ copyNumber: -1 })
@@ -236,7 +284,7 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
       docs.push({
         bookId: book._id,
         copyNumber,
-        copyCode: buildCopyCode(book, copyNumber),
+        copyCode: buildCopyCode(book, copyNumber), // Sinh mã code
         status: "available",
         acquiredAt: new Date(),
         price: Number(book.price) || 0,
@@ -251,14 +299,9 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
       inserted = await BookCopy.insertMany(docs, { ordered: true });
       log("✅ insertMany success inserted =", inserted.length);
     } catch (err) {
-      logErr("❌ insertMany error:", {
-        code: err?.code,
-        name: err?.name,
-        message: err?.message,
-        keyPattern: err?.keyPattern,
-        keyValue: err?.keyValue,
-      });
+      logErr("❌ insertMany error:", err);
 
+      // Nếu lỗi trùng mã (duplicate key code 11000) -> Thử lại bằng cách tăng số thứ tự lên
       if (err?.code === 11000) {
         log("🔄 duplicate key -> retry with new startNumber");
         const lastAgain = await BookCopy.findOne({ bookId: book._id })
@@ -291,6 +334,7 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
       }
     }
 
+    // --- BƯỚC 4: Tính toán lại số lượng tồn kho ---
     log("🔄 recomputeBookCounts start bookId =", book._id);
     await recomputeBookCounts(book._id);
     log("✅ recomputeBookCounts done");
@@ -299,7 +343,6 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
       "categories",
       "name"
     );
-    log("✅ latestBook fetched categories populated");
 
     log("🎉 DONE in", `${Date.now() - startedAt}ms`);
     return res.status(201).json({
@@ -309,21 +352,19 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
         : "ISBN chưa có → đã tạo đầu sách và thêm bản sao (BookCopy).",
       book: latestBook,
       createdCopiesCount: inserted.length,
-      reqId, // ✅ để FE gửi mình reqId nếu cần debug
+      reqId,
     });
   } catch (e) {
-    logErr("🔥 UNCAUGHT ERROR:", {
-      message: e?.message,
-      name: e?.name,
-      stack: e?.stack,
-    });
+    logErr("🔥 UNCAUGHT ERROR:", e);
     return next(new ErrorHandler(e?.message || "Lỗi server.", 500));
   }
 });
 
-
-// ✅ GET /api/v1/book/all
-// ✅ NEW: query.deleted = "active" | "deleted" | "all"  (default: active)
+/**
+ * GET /api/v1/book/all
+ * Lấy danh sách sách có phân trang và lọc
+ * Hỗ trợ lọc theo: Search, Availability, Price, Category, Deleted status
+ */
 export const getAllBooks = catchAsyncErrors(async (req, res, next) => {
   const {
     search,
@@ -334,13 +375,12 @@ export const getAllBooks = catchAsyncErrors(async (req, res, next) => {
     page = 1,
     limit,
     categoryId,
-
-    // ✅ NEW
-    deleted = "active",
+    deleted = "active", // active: chỉ lấy sách chưa xóa, deleted: đã xóa, all: tất cả
   } = req.query;
 
   const filters = {};
 
+  // Lọc theo từ khóa (Regex)
   if (search) {
     const keyword = String(search).trim();
     if (keyword) {
@@ -349,10 +389,12 @@ export const getAllBooks = catchAsyncErrors(async (req, res, next) => {
     }
   }
 
+  // Lọc theo tình trạng còn sách
   if (availability === "true" || availability === "false") {
     filters.availability = availability === "true";
   }
 
+  // Lọc theo khoảng giá
   if (minPrice !== undefined || maxPrice !== undefined) {
     filters.price = {};
     if (minPrice !== undefined && minPrice !== "")
@@ -361,15 +403,16 @@ export const getAllBooks = catchAsyncErrors(async (req, res, next) => {
       filters.price.$lte = Number(maxPrice);
   }
 
+  // Lọc theo danh mục
   if (categoryId) {
     filters.categories = categoryId;
   }
 
-  // ✅ NEW: lọc theo soft delete
+  // Lọc theo trạng thái xóa mềm
   if (deleted === "active") filters.isDeleted = false;
   if (deleted === "deleted") filters.isDeleted = true;
-  // deleted === "all" -> không set filters.isDeleted
 
+  // Sorting
   const sortOptions = {
     newest: { createdAt: -1 },
     price_asc: { price: 1 },
@@ -379,6 +422,7 @@ export const getAllBooks = catchAsyncErrors(async (req, res, next) => {
   };
   const sortBy = sortOptions[sort] || sortOptions.newest;
 
+  // Pagination
   const totalBooks = await Book.countDocuments(filters);
   const pageNumber = Math.max(Number(page) || 1, 1);
   const limitNumber = limit ? Math.max(Number(limit), 1) : 0;
@@ -406,7 +450,11 @@ export const getAllBooks = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-// ✅ PATCH /api/v1/book/:id/soft-delete
+/**
+ * PATCH /api/v1/book/:id/soft-delete
+ * Xóa mềm một cuốn sách (Chỉ đánh dấu là đã xóa)
+ * Điều kiện: Tất cả các bản sao phải đang ở trạng thái Available (không ai đang mượn).
+ */
 export const softDeleteBook = catchAsyncErrors(async (req, res, next) => {
   const { id } = req.params;
 
@@ -421,7 +469,8 @@ export const softDeleteBook = catchAsyncErrors(async (req, res, next) => {
     });
   }
 
-  // ✅ CHECK: quantity (available) phải == totalCopies
+  // Kiểm tra điều kiện: quantity (số bản có sẵn) == totalCopies (tổng số bản)
+  // Tức là không có bản nào đang được mượn.
   const { total, available } = await getBookCopyCounts(id);
 
   if (available !== total) {
@@ -433,7 +482,6 @@ export const softDeleteBook = catchAsyncErrors(async (req, res, next) => {
     );
   }
 
-  // cập nhật lại số đếm cho chắc
   await recomputeBookCounts(id);
 
   book.isDeleted = true;
@@ -447,7 +495,10 @@ export const softDeleteBook = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-// ✅ PATCH /api/v1/book/:id/restore
+/**
+ * PATCH /api/v1/book/:id/restore
+ * Khôi phục sách đã xóa mềm
+ */
 export const restoreBook = catchAsyncErrors(async (req, res, next) => {
   const { id } = req.params;
 
@@ -466,7 +517,6 @@ export const restoreBook = catchAsyncErrors(async (req, res, next) => {
   book.deletedAt = null;
   await book.save();
 
-  // cập nhật số đếm
   await recomputeBookCounts(id);
 
   res.status(200).json({
@@ -476,12 +526,10 @@ export const restoreBook = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-// 🔥 PUT /api/v1/book/admin/:id/cover - ĐÃ THÊM LOG CHI TIẾT
-// Multer + Cloudinary middleware: uploadBookImage.single("coverImage")
-// -> req.file.path là URL Cloudinary
-// ✅ PUT /api/v1/book/admin/:id/cover
-// Multer + Cloudinary middleware: uploadBookImage.single("coverImage")
-// -> req.file.path là URL Cloudinary
+/**
+ * PUT /api/v1/book/admin/:id/cover
+ * Cập nhật ảnh bìa sách
+ */
 export const updateBookCover = catchAsyncErrors(async (req, res, next) => {
   const { id } = req.params;
 
@@ -490,6 +538,7 @@ export const updateBookCover = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler("Không tìm thấy sách.", 404));
   }
 
+  // req.file.path là đường dẫn ảnh trên Cloudinary do middleware xử lý
   const url = req.file?.path;
   if (!url) {
     return next(new ErrorHandler("Vui lòng chọn ảnh bìa (coverImage).", 400));
@@ -505,5 +554,5 @@ export const updateBookCover = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-// ✅ GIỮ ROUTE CŨ /delete/:id nhưng đổi thành soft delete để không vỡ FE cũ
+// Giữ route delete cũ nhưng trỏ vào softDelete để an toàn
 export const deleteBook = softDeleteBook;
