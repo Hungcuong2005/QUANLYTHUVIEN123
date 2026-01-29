@@ -2,7 +2,6 @@ import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
 import ErrorHandler from "../middlewares/errorMiddlewares.js";
 import { User } from "../models/user.model.js";
 import bcrypt from "bcrypt";
-import { v2 as cloudinary } from "cloudinary";
 
 // GET /api/v1/user/all?status=active|deleted
 // ✅ CHỈ LẤY user đã verify
@@ -23,34 +22,30 @@ export const getAllUsers = catchAsyncErrors(async (req, res, next) => {
 
 // POST /api/v1/user/add/new-admin
 export const registerNewAdmin = catchAsyncErrors(async (req, res, next) => {
-  if (!req.files || Object.keys(req.files).length === 0) {
-    return next(new ErrorHandler("Vui lòng tải lên ảnh đại diện (avatar).", 400));
-  }
-
   const { name, email, password } = req.body;
+  
   if (!name || !email || !password) {
     return next(new ErrorHandler("Vui lòng nhập đầy đủ: tên, email, mật khẩu.", 400));
   }
 
+  // Kiểm tra email đã tồn tại
   const existed = await User.findOne({ email: email.toLowerCase() });
-  if (existed) return next(new ErrorHandler("Email đã tồn tại.", 400));
-
-  const avatarFile = req.files.avatar;
-  const allowed = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
-  if (!avatarFile || !allowed.includes(avatarFile.mimetype)) {
-    return next(new ErrorHandler("Ảnh không hợp lệ. Chỉ chấp nhận PNG/JPG/WEBP.", 400));
+  if (existed) {
+    return next(new ErrorHandler("Email đã tồn tại.", 400));
   }
 
-  const cloudinaryResponse = await cloudinary.uploader.upload(avatarFile.tempFilePath, {
-    folder: "LIBRARY_USERS",
-  });
-
-  if (!cloudinaryResponse || cloudinaryResponse.error) {
-    return next(new ErrorHandler("Upload avatar thất bại.", 500));
+  // Kiểm tra có file avatar không
+  if (!req.file) {
+    return next(new ErrorHandler("Vui lòng tải lên ảnh đại diện (avatar).", 400));
   }
 
+  // Lấy URL từ Cloudinary (đã được xử lý bởi multer middleware)
+  const avatarUrl = req.file.path;
+
+  // Hash password
   const hashedPassword = await bcrypt.hash(password, 10);
 
+  // Tạo admin mới
   const admin = await User.create({
     name,
     email: email.toLowerCase(),
@@ -64,8 +59,8 @@ export const registerNewAdmin = catchAsyncErrors(async (req, res, next) => {
     deletedAt: null,
     deletedBy: null,
     avatar: {
-      public_id: cloudinaryResponse.public_id,
-      url: cloudinaryResponse.secure_url,
+      public_id: req.file.filename, // Cloudinary public_id
+      url: avatarUrl,
     },
   });
 

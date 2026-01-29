@@ -1,48 +1,37 @@
-import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
 import express from "express";
+import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
+
 import {
   addBookAndCopies,
   deleteBook,
   getAllBooks,
   getBookByIsbn,
   getAvailableCopies,
-
-  // ✅ NEW
   softDeleteBook,
   restoreBook,
+  updateBookCover,
 } from "../controllers/bookController.js";
+
+import { uploadBookImage } from "../middlewares/uploadBookImage.js";
 
 const router = express.Router();
 
 router.get("/isbn/:isbn", isAuthenticated, isAuthorized("Admin"), getBookByIsbn);
 router.post("/admin/add", isAuthenticated, isAuthorized("Admin"), addBookAndCopies);
-
-// ✅ Lấy danh sách BookCopy available theo bookId
-router.get(
-  "/:id/available-copies",
-  isAuthenticated,
-  isAuthorized("Admin"),
-  getAvailableCopies
-);
-
+router.get("/:id/available-copies", isAuthenticated, isAuthorized("Admin"), getAvailableCopies);
 router.get("/all", isAuthenticated, getAllBooks);
+router.patch("/:id/soft-delete", isAuthenticated, isAuthorized("Admin"), softDeleteBook);
+router.patch("/:id/restore", isAuthenticated, isAuthorized("Admin"), restoreBook);
 
-// ✅ NEW: soft delete + restore
-router.patch(
-  "/:id/soft-delete",
+// ✅ Upload ảnh bìa sách
+router.put(
+  "/admin/:id/cover",
   isAuthenticated,
   isAuthorized("Admin"),
-  softDeleteBook
+  uploadBookImage.single("coverImage"),
+  updateBookCover
 );
 
-router.patch(
-  "/:id/restore",
-  isAuthenticated,
-  isAuthorized("Admin"),
-  restoreBook
-);
-
-// ✅ Route cũ vẫn giữ để không vỡ code cũ (đã đổi sang soft delete)
 router.delete("/delete/:id", isAuthenticated, isAuthorized("Admin"), deleteBook);
 
 export default router;

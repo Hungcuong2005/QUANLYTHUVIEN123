@@ -40,15 +40,32 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  expressFileupload({
-    useTempFiles: true,
-    tempFileDir: "/tmp/",
-  })
-);
+// 🔥 CRITICAL FIX: Chỉ parse JSON/urlencoded cho NON-MULTIPART requests
+// Multer sẽ tự xử lý multipart/form-data
+app.use((req, res, next) => {
+  const contentType = req.headers['content-type'] || '';
+  
+  // Nếu KHÔNG phải multipart/form-data thì mới parse
+  if (!contentType.includes('multipart/form-data')) {
+    express.json()(req, res, () => {
+      express.urlencoded({ extended: true })(req, res, next);
+    });
+  } else {
+    // Nếu là multipart thì skip, để multer xử lý
+    console.log("🔥 [APP] Detected multipart/form-data - skipping body parsers");
+    next();
+  }
+});
+
+// ⚠️ XÓA hoặc COMMENT 2 dòng này nếu không dùng expressFileupload
+// Vì nó CONFLICT với multer-storage-cloudinary
+// app.use(
+//   expressFileupload({
+//     useTempFiles: true,
+//     tempFileDir: "/tmp/",
+//   })
+// );
 
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/book", bookRouter);

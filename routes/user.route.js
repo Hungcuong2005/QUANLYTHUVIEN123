@@ -7,15 +7,18 @@ import {
   restoreUser,
 } from "../controllers/userController.js";
 import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
+import { uploadAvatar } from "../middlewares/uploadAvatar.js";
 
 const router = express.Router();
 
 router.get("/all", isAuthenticated, isAuthorized("Admin"), getAllUsers);
 
+// ✅ Upload avatar với multer + cloudinary
 router.post(
   "/add/new-admin",
   isAuthenticated,
   isAuthorized("Admin"),
+  uploadAvatar.single("avatar"), // ← Thêm middleware này
   registerNewAdmin
 );
 

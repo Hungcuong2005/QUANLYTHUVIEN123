@@ -260,7 +260,7 @@ export const addBookAndCopies = catchAsyncErrors(async (req, res, next) => {
       });
 
       if (err?.code === 11000) {
-        log("🔁 duplicate key -> retry with new startNumber");
+        log("🔄 duplicate key -> retry with new startNumber");
         const lastAgain = await BookCopy.findOne({ bookId: book._id })
           .sort({ copyNumber: -1 })
           .select("copyNumber");
@@ -472,6 +472,35 @@ export const restoreBook = catchAsyncErrors(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: "Khôi phục sách thành công.",
+    book,
+  });
+});
+
+// 🔥 PUT /api/v1/book/admin/:id/cover - ĐÃ THÊM LOG CHI TIẾT
+// Multer + Cloudinary middleware: uploadBookImage.single("coverImage")
+// -> req.file.path là URL Cloudinary
+// ✅ PUT /api/v1/book/admin/:id/cover
+// Multer + Cloudinary middleware: uploadBookImage.single("coverImage")
+// -> req.file.path là URL Cloudinary
+export const updateBookCover = catchAsyncErrors(async (req, res, next) => {
+  const { id } = req.params;
+
+  const book = await Book.findById(id);
+  if (!book) {
+    return next(new ErrorHandler("Không tìm thấy sách.", 404));
+  }
+
+  const url = req.file?.path;
+  if (!url) {
+    return next(new ErrorHandler("Vui lòng chọn ảnh bìa (coverImage).", 400));
+  }
+
+  book.coverImage = url;
+  await book.save();
+
+  return res.status(200).json({
+    success: true,
+    message: "Cập nhật ảnh bìa thành công.",
     book,
   });
 });
