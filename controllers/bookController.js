@@ -414,12 +414,15 @@ export const getAllBooks = catchAsyncErrors(async (req, res, next) => {
   if (deleted === "deleted") filters.isDeleted = true;
 
   // Sorting
+  // ✅ Tie-breaker rule: nếu nhiều sách trùng tiêu chí lọc/sort (giá, số lượng, ngày tạo...),
+  // thì sắp xếp tiếp theo ISBN tăng dần để phân trang luôn ổn định.
+  // (Thêm _id để đảm bảo ổn định tuyệt đối khi ISBN cũng trùng.)
   const sortOptions = {
-    newest: { createdAt: -1 },
-    price_asc: { price: 1 },
-    price_desc: { price: -1 },
-    quantity_asc: { quantity: 1 },
-    quantity_desc: { quantity: -1 },
+    newest: { createdAt: -1, isbn: 1, _id: 1 },
+    price_asc: { price: 1, isbn: 1, _id: 1 },
+    price_desc: { price: -1, isbn: 1, _id: 1 },
+    quantity_asc: { quantity: 1, isbn: 1, _id: 1 },
+    quantity_desc: { quantity: -1, isbn: 1, _id: 1 },
   };
   const sortBy = sortOptions[sort] || sortOptions.newest;
 
