@@ -1,6 +1,7 @@
 import { app } from "./app.js";
 
+const PORT = process.env.PORT || 4000;
 
-app.listen(process.env.PORT, () => {
-    console.log(`Server chạy ở cổng ${process.env.PORT}`);
+app.listen(PORT, () => {
+  console.log(`Server chạy ở cổng ${PORT}`);
 });
