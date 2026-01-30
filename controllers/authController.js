@@ -174,17 +174,22 @@ export const login = catchAsyncErrors(async (req, res, next) => {
  * Xóa cookie chứa token bằng cách set expire date về quá khứ.
  */
 export const logout = catchAsyncErrors(async (req, res, next) => {
-    res
-        .status(200)
-        .cookie("token", "", {
-            expires: new Date(Date.now()), // Hết hạn ngay lập tức
-            httpOnly: true,
-        })
-        .json({
-            success: true,
-            message: "Logged out successfully.",
-        });
+  const isProd = process.env.NODE_ENV === "production";
+
+  res
+    .status(200)
+    .cookie("token", "", {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+    })
+    .json({
+      success: true,
+      message: "Logged out successfully.",
+    });
 });
+
 
 /**
  * =====================================
