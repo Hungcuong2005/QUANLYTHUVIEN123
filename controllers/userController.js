@@ -2,7 +2,7 @@ import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
 import ErrorHandler from "../middlewares/errorMiddlewares.js";
 import { User } from "../models/user.model.js";
 import bcrypt from "bcrypt";
-
+import { uploadBufferToCloudinary } from "../utils/cloudinaryUpload.js";
 // GET /api/v1/user/all?status=active|deleted
 // ✅ CHỈ LẤY user đã verify
 export const getAllUsers = catchAsyncErrors(async (req, res, next) => {
@@ -21,54 +21,161 @@ export const getAllUsers = catchAsyncErrors(async (req, res, next) => {
 });
 
 // POST /api/v1/user/add/new-admin
+
+// POST /api/v1/user/add/new-admin
 export const registerNewAdmin = catchAsyncErrors(async (req, res, next) => {
-  const { name, email, password } = req.body;
+  console.log("\n");
+  console.log("========================================");
+  console.log("🔍 [registerNewAdmin] START");
+  console.log("========================================");
   
+  // 1. Log request headers
+  console.log("📋 Request Headers:", {
+    'content-type': req.headers['content-type'],
+    'content-length': req.headers['content-length'],
+  });
+  
+  // 2. Log body
+  const { name, email, password } = req.body;
+  console.log("📋 Request Body:", {
+    name: name || 'MISSING',
+    email: email || 'MISSING',
+    password: password ? '***' : 'MISSING',
+    bodyKeys: Object.keys(req.body),
+  });
+  
+  // 3. Log file (QUAN TRỌNG)
+  console.log("📋 Request File (avatar):", {
+    hasFile: !!req.file,
+    file: req.file ? {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      encoding: req.file.encoding,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      hasBuffer: !!req.file.buffer,
+      bufferLength: req.file.buffer?.length || 0,
+    } : null,
+  });
+
+  // 4. Validate input
   if (!name || !email || !password) {
-    return next(new ErrorHandler("Vui lòng nhập đầy đủ: tên, email, mật khẩu.", 400));
+    console.error("❌ Missing required fields!");
+    console.log("========================================\n");
+    return next(
+      new ErrorHandler("Vui lòng nhập đầy đủ: tên, email, mật khẩu.", 400)
+    );
   }
 
-  // Kiểm tra email đã tồn tại
+  // 5. Check email exists
+  console.log("🔍 Checking if email exists:", email);
   const existed = await User.findOne({ email: email.toLowerCase() });
+  
   if (existed) {
+    console.error("❌ Email already exists!");
+    console.log("========================================\n");
     return next(new ErrorHandler("Email đã tồn tại.", 400));
   }
+  
+  console.log("✅ Email available");
 
-  // Kiểm tra có file avatar không
+  // 6. Validate avatar file
   if (!req.file) {
-    return next(new ErrorHandler("Vui lòng tải lên ảnh đại diện (avatar).", 400));
+    console.error("❌ No avatar file in request!");
+    console.error("💡 Possible reasons:");
+    console.error("   - Multer middleware không chạy");
+    console.error("   - Body parser đã consume request body");
+    console.error("   - Field name không đúng (phải là 'avatar')");
+    console.log("========================================\n");
+    return next(
+      new ErrorHandler("Vui lòng tải lên ảnh đại diện (avatar).", 400)
+    );
   }
 
-  // Lấy URL từ Cloudinary (đã được xử lý bởi multer middleware)
-  const avatarUrl = req.file.path;
+  if (!req.file.buffer) {
+    console.error("❌ No buffer in avatar file!");
+    console.error("💡 Multer storage phải là memoryStorage()");
+    console.log("========================================\n");
+    return next(new ErrorHandler("File buffer không tồn tại.", 400));
+  }
 
-  // Hash password
-  const hashedPassword = await bcrypt.hash(password, 10);
+  // 7. Upload avatar to Cloudinary
+  console.log("📤 Uploading avatar to Cloudinary...");
+  console.log("   - Folder: LIBRARY_USERS");
+  console.log("   - Buffer size:", req.file.buffer.length, "bytes");
+  
+  try {
+    const result = await uploadBufferToCloudinary(req.file.buffer, "LIBRARY_USERS");
 
-  // Tạo admin mới
-  const admin = await User.create({
-    name,
-    email: email.toLowerCase(),
-    password: hashedPassword,
-    role: "Admin",
-    accountVerified: true,
-    isLocked: false,
-    lockedAt: null,
-    lockReason: "",
-    isDeleted: false,
-    deletedAt: null,
-    deletedBy: null,
-    avatar: {
-      public_id: req.file.filename, // Cloudinary public_id
-      url: avatarUrl,
-    },
-  });
+    console.log("✅ Cloudinary upload SUCCESS:", {
+      public_id: result.public_id,
+      url: result.secure_url,
+      format: result.format,
+      width: result.width,
+      height: result.height,
+      bytes: result.bytes,
+    });
 
-  res.status(201).json({
-    success: true,
-    message: "Đăng ký Admin thành công.",
-    admin,
-  });
+    // 8. Hash password
+    console.log("🔐 Hashing password...");
+    const hashedPassword = await bcrypt.hash(password, 10);
+    console.log("✅ Password hashed");
+
+    // 9. Create admin
+    console.log("💾 Creating admin user...");
+    const admin = await User.create({
+      name,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      role: "Admin",
+      accountVerified: true,
+      isLocked: false,
+      lockedAt: null,
+      lockReason: "",
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      avatar: {
+        public_id: result.public_id,
+        url: result.secure_url,
+      },
+    });
+
+    console.log("✅ Admin created successfully:", {
+      id: admin._id,
+      name: admin.name,
+      email: admin.email,
+      role: admin.role,
+    });
+
+    console.log("========================================");
+    console.log("🎉 [registerNewAdmin] SUCCESS");
+    console.log("========================================\n");
+
+    res.status(201).json({
+      success: true,
+      message: "Đăng ký Admin thành công.",
+      admin,
+    });
+    
+  } catch (uploadError) {
+    console.error("========================================");
+    console.error("❌ Cloudinary upload FAILED!");
+    console.error("========================================");
+    console.error("Error details:", {
+      message: uploadError.message,
+      stack: uploadError.stack,
+      name: uploadError.name,
+    });
+    console.log("========================================\n");
+    
+    return next(
+      new ErrorHandler(
+        "Upload ảnh lên Cloudinary thất bại: " + uploadError.message,
+        500
+      )
+    );
+  }
 });
 
 // PATCH /api/v1/user/:id/lock

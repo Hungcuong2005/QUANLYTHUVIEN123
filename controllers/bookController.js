@@ -3,6 +3,7 @@ import ErrorHandler from "../middlewares/errorMiddlewares.js";
 import { Book } from "../models/book.model.js";
 import BookCopy from "../models/bookCopy.model.js";
 import { Category } from "../models/category.model.js";
+import { uploadBufferToCloudinary } from "../utils/cloudinaryUpload.js";
 
 // Giới hạn tối đa số thể loại cho 1 cuốn sách
 const MAX_CATEGORIES = 3;
@@ -530,29 +531,150 @@ export const restoreBook = catchAsyncErrors(async (req, res, next) => {
  * PUT /api/v1/book/admin/:id/cover
  * Cập nhật ảnh bìa sách
  */
+/**
+ * PUT /api/v1/book/admin/:id/cover
+ * Cập nhật ảnh bìa sách
+ */
 export const updateBookCover = catchAsyncErrors(async (req, res, next) => {
+  console.log("\n");
+  console.log("========================================");
+  console.log("🔍 [updateBookCover] START");
+  console.log("========================================");
+  
   const { id } = req.params;
+  
+  // 1. Log request headers
+  console.log("📋 Request Headers:", {
+    'content-type': req.headers['content-type'],
+    'content-length': req.headers['content-length'],
+    'origin': req.headers['origin'],
+  });
+  
+  // 2. Log params
+  console.log("📋 Request Params:", {
+    bookId: id,
+  });
+  
+  // 3. Log body (nếu có)
+  console.log("📋 Request Body:", {
+    bodyKeys: req.body ? Object.keys(req.body) : 'null',
+    bodyContent: req.body,
+  });
+  
+  // 4. Log file (QUAN TRỌNG)
+  console.log("📋 Request File:", {
+    hasFile: !!req.file,
+    file: req.file ? {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      encoding: req.file.encoding,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      hasBuffer: !!req.file.buffer,
+      bufferLength: req.file.buffer?.length || 0,
+    } : null,
+  });
 
+  // 5. Kiểm tra book tồn tại
+  console.log("🔍 Finding book with ID:", id);
   const book = await Book.findById(id);
+  
   if (!book) {
+    console.error("❌ Book not found!");
+    console.log("========================================\n");
     return next(new ErrorHandler("Không tìm thấy sách.", 404));
   }
+  
+  console.log("✅ Book found:", {
+    title: book.title,
+    author: book.author,
+    currentCoverImage: book.coverImage,
+  });
 
-  // req.file.path là đường dẫn ảnh trên Cloudinary do middleware xử lý
-  const url = req.file?.path;
-  if (!url) {
+  // 6. Validate file
+  if (!req.file) {
+    console.error("❌ No file in request!");
+    console.error("💡 Possible reasons:");
+    console.error("   - Multer middleware không chạy");
+    console.error("   - Body parser đã consume request body");
+    console.error("   - Field name không đúng (phải là 'coverImage')");
+    console.log("========================================\n");
     return next(new ErrorHandler("Vui lòng chọn ảnh bìa (coverImage).", 400));
   }
 
-  book.coverImage = url;
-  await book.save();
+  if (!req.file.buffer) {
+    console.error("❌ No buffer in file!");
+    console.error("💡 Multer storage phải là memoryStorage()");
+    console.log("========================================\n");
+    return next(new ErrorHandler("File buffer không tồn tại.", 400));
+  }
 
-  return res.status(200).json({
-    success: true,
-    message: "Cập nhật ảnh bìa thành công.",
-    book,
-  });
+  // 7. Upload to Cloudinary
+  console.log("📤 Uploading to Cloudinary...");
+  console.log("   - Folder: LIBRARY_BOOKS");
+  console.log("   - Buffer size:", req.file.buffer.length, "bytes");
+  
+  try {
+    const result = await uploadBufferToCloudinary(
+      req.file.buffer,
+      "LIBRARY_BOOKS"
+    );
+
+    console.log("✅ Cloudinary upload SUCCESS:", {
+      public_id: result.public_id,
+      url: result.secure_url,
+      format: result.format,
+      width: result.width,
+      height: result.height,
+      bytes: result.bytes,
+    });
+
+    // 8. Update book
+    console.log("💾 Updating book...");
+    
+    const oldCoverImage = book.coverImage;
+    
+    book.coverImage = {
+      public_id: result.public_id,
+      url: result.secure_url,
+    };
+
+    await book.save();
+
+    console.log("✅ Book updated successfully!");
+    console.log("   Old coverImage:", oldCoverImage);
+    console.log("   New coverImage:", book.coverImage);
+
+    console.log("========================================");
+    console.log("🎉 [updateBookCover] SUCCESS");
+    console.log("========================================\n");
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật ảnh bìa thành công.",
+      book,
+    });
+    
+  } catch (uploadError) {
+    console.error("========================================");
+    console.error("❌ Cloudinary upload FAILED!");
+    console.error("========================================");
+    console.error("Error details:", {
+      message: uploadError.message,
+      stack: uploadError.stack,
+      name: uploadError.name,
+    });
+    console.log("========================================\n");
+    
+    return next(
+      new ErrorHandler(
+        "Upload ảnh lên Cloudinary thất bại: " + uploadError.message,
+        500
+      )
+    );
+  }
 });
+
 
 // Giữ route delete cũ nhưng trỏ vào softDelete để an toàn
 export const deleteBook = softDeleteBook;

@@ -27,8 +27,10 @@ const bookSchema = new mongoose.Schema(
       { type: mongoose.Schema.Types.ObjectId, ref: "Category", index: true },
     ],
 
-    coverImage: { type: String, default: "" }, // URL cloudinary
-
+    coverImage: {
+      public_id: { type: String, default: "" },
+      url: { type: String, default: "" }
+    },
 
     // phí mượn / giá sách
     price: { type: Number, default: 0, min: 0 },
